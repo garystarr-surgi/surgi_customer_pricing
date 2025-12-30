@@ -5,15 +5,22 @@ def get_customer_pricing(customer, item_code):
     """
     Returns:
     - description: Item description
-    - available_qty: On-shelf minus open Sales Orders and Quotations
+    - available_qty: Bin.actual_qty - open SO - open Quotations
     - last_price: Last Sales Invoice rate for this customer
     """
 
-    # 1. Item description
-    item = frappe.get_doc("Item", item_code)
-    description = item.description or item.item_name
+    # 1️⃣ Fetch item description safely
+    try:
+        item = frappe.get_doc("Item", item_code)
+        description = item.description or item.item_name
+    except frappe.DoesNotExistError:
+        return {
+            "description": f"Item {item_code} not found",
+            "available_qty": 0,
+            "last_price": None
+        }
 
-    # 2. On-shelf qty (sum across all bins)
+    # 2️⃣ Total on-shelf qty
     bins = frappe.get_all(
         "Bin",
         filters={"item_code": item_code},
@@ -21,28 +28,28 @@ def get_customer_pricing(customer, item_code):
     )
     total_qty = sum(b.actual_qty for b in bins)
 
-    # 3. Allocated qty in open Sales Orders
+    # 3️⃣ Allocated qty in open Sales Orders (docstatus=0)
     allocated_so = frappe.db.sql("""
-        SELECT SUM(sii.qty)
+        SELECT COALESCE(SUM(sii.qty), 0)
         FROM `tabSales Order Item` sii
         JOIN `tabSales Order` so ON so.name = sii.parent
         WHERE so.docstatus = 0 AND sii.item_code = %s
     """, (item_code,))
-    allocated_so_qty = allocated_so[0][0] or 0
+    allocated_so_qty = allocated_so[0][0]
 
-    # 4. Allocated qty in open Quotations
+    # 4️⃣ Allocated qty in open Quotations (docstatus=0)
     allocated_quot = frappe.db.sql("""
-        SELECT SUM(qi.qty)
+        SELECT COALESCE(SUM(qi.qty), 0)
         FROM `tabQuotation Item` qi
         JOIN `tabQuotation` q ON q.name = qi.parent
         WHERE q.docstatus = 0 AND qi.item_code = %s
     """, (item_code,))
-    allocated_quot_qty = allocated_quot[0][0] or 0
+    allocated_quot_qty = allocated_quot[0][0]
 
-    # 5. Available qty
+    # 5️⃣ Available qty
     available_qty = total_qty - allocated_so_qty - allocated_quot_qty
 
-    # 6. Last Sales Invoice price for this customer
+    # 6️⃣ Last Sales Invoice price for this customer
     last_price = frappe.db.sql("""
         SELECT sii.rate
         FROM `tabSales Invoice Item` sii
@@ -55,7 +62,14 @@ def get_customer_pricing(customer, item_code):
     """, (customer, item_code))
     last_price_val = last_price[0][0] if last_price else None
 
-    # 7. Return all data
+    # 7️⃣ Debug logging
+    frappe.logger().info(
+        f"get_customer_pricing: Item={item_code} total={total_qty} "
+        f"SO={allocated_so_qty} Quotation={allocated_quot_qty} "
+        f"Available={available_qty} LastPrice={last_price_val}"
+    )
+
+    # 8️⃣ Return results
     return {
         "description": description,
         "available_qty": available_qty,
