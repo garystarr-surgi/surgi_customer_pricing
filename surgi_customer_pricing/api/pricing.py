@@ -30,20 +30,24 @@ def get_customer_pricing(customer, item_code):
     bins = frappe.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
     total_qty = sum(b.actual_qty for b in bins)
 
-    # 3️⃣ Allocated qty in open Sales Orders
+     # 3️⃣ Allocated qty in open Sales Orders (submitted but not closed)
     allocated_so_qty = frappe.db.sql("""
-        SELECT COALESCE(SUM(sii.qty), 0)
+        SELECT COALESCE(SUM(sii.qty - sii.delivered_qty), 0)
         FROM `tabSales Order Item` sii
         JOIN `tabSales Order` so ON so.name = sii.parent
-        WHERE so.docstatus = 0 AND sii.item_code = %s
+        WHERE so.docstatus = 1 
+        AND so.status NOT IN ('Completed', 'Closed', 'Cancelled')
+        AND sii.item_code = %s
     """, (item_code,))[0][0]
-
-    # 4️⃣ Allocated qty in open Quotations
+    
+    # 4️⃣ Allocated qty in open Quotations (submitted but not lost/cancelled)
     allocated_quot_qty = frappe.db.sql("""
         SELECT COALESCE(SUM(qi.qty), 0)
         FROM `tabQuotation Item` qi
         JOIN `tabQuotation` q ON q.name = qi.parent
-        WHERE q.docstatus = 0 AND qi.item_code = %s
+        WHERE q.docstatus = 1
+        AND q.status NOT IN ('Lost', 'Ordered', 'Cancelled', 'Expired')
+        AND qi.item_code = %s
     """, (item_code,))[0][0]
 
     # 5️⃣ Available qty (Bin − SO − Quotation, clamped at 0)
