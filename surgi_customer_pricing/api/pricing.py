@@ -26,9 +26,16 @@ def get_customer_pricing(customer, item_code):
             "quot_qty": 0
         }
 
-    # 2️⃣ Total on-shelf qty
-    bins = frappe.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
-    total_qty = sum(b.actual_qty for b in bins)
+    # 2️⃣ Total on-shelf qty (excluding Rejected and Blemish warehouses)
+    bins = frappe.db.sql("""
+        SELECT COALESCE(SUM(b.actual_qty), 0)
+        FROM `tabBin` b
+        JOIN `tabWarehouse` w ON b.warehouse = w.name
+        WHERE b.item_code = %s
+        AND w.name NOT LIKE '%Rejected%'
+        AND w.name NOT LIKE '%Blemish%'
+    """, (item_code,))[0][0]
+    total_qty = bins
 
     # 3️⃣ Allocated qty in open Sales Orders (all qty, even partially delivered)
     allocated_so_qty = frappe.db.sql("""
