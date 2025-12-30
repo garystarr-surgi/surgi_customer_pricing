@@ -30,9 +30,9 @@ def get_customer_pricing(customer, item_code):
     bins = frappe.get_all("Bin", filters={"item_code": item_code}, fields=["actual_qty"])
     total_qty = sum(b.actual_qty for b in bins)
 
-     # 3️⃣ Allocated qty in open Sales Orders (submitted but not closed)
+    # 3️⃣ Allocated qty in open Sales Orders (all qty, even partially delivered)
     allocated_so_qty = frappe.db.sql("""
-        SELECT COALESCE(SUM(sii.qty - sii.delivered_qty), 0)
+        SELECT COALESCE(SUM(sii.qty), 0)
         FROM `tabSales Order Item` sii
         JOIN `tabSales Order` so ON so.name = sii.parent
         WHERE so.docstatus = 1 
