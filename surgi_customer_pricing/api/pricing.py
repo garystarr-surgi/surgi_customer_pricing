@@ -1,7 +1,7 @@
 import frappe
 
 @frappe.whitelist()
-def get_customer_pricing(customer, item_code):
+def get_customer_item_data_v2(customer, item_code):  # Changed from get_customer_pricing
     """
     Returns:
     - description: Item description
